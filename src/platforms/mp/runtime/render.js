@@ -112,9 +112,65 @@ function throttle (func, wait, options) {
   }
 }
 
+function calcDiff(holder, key, newObj, oldObj) {
+  if (newObj === oldObj || newObj === undefined) {
+    return
+  }
+
+  if (newObj == null || oldObj == null || typeof newObj !== typeof oldObj) {
+    holder[key] = newObj
+  } else if (Array.isArray(newObj) && Array.isArray(oldObj)) {
+    if (newObj.length === oldObj.length) {
+      for (let i = 0, len = newObj.length; i < len; ++i) {
+        calcDiff(holder, key + '[' + i + ']', newObj[i], oldObj[i])
+      }
+    } else {
+      holder[key] = newObj
+    }
+  } else if (typeof newObj === 'object' && typeof oldObj === 'object') {
+    let newKeys = Object.keys(newObj)
+    let oldKeys = Object.keys(oldObj)
+
+    if (newKeys.length !== oldKeys.length) {
+      holder[key] = newObj
+    } else {
+      let allKeysSet = Object.create(null)
+      for (let i = 0, len = newKeys.length; i < len; ++i) {
+        allKeysSet[newKeys[i]] = true
+        allKeysSet[oldKeys[i]] = true
+      }
+      if (Object.keys(allKeysSet).length !== newKeys.length) {
+        holder[key] = newObj
+      } else {
+        for (let i = 0, len = newKeys.length; i < len; ++i) {
+          let k = newKeys[i]
+          calcDiff(holder, key + '.' + k, newObj[k], oldObj[k])
+        }
+      }
+    }
+  } else if (newObj !== oldObj) {
+    holder[key] = newObj
+  }
+}
+
+function diff(newObj, oldObj) {
+  let keys = Object.keys(newObj)
+  let diffResult = {}
+  for (let i = 0, len = keys.length; i < len; ++i) {
+    let k = keys[i]
+    let oldKeyPath = k.split('.')
+    let oldValue = oldObj[oldKeyPath[0]]
+    for (let j = 1, jlen = oldKeyPath.length; j < jlen && oldValue !== undefined; ++j) {
+      oldValue = oldValue[oldKeyPath[j]]
+    }
+    calcDiff(diffResult, k, newObj[k], oldValue)
+  }
+  return diffResult
+}
+
 // 优化频繁的 setData: https://mp.weixin.qq.com/debug/wxadoc/dev/framework/performance/tips.html
-const throttleSetData = throttle((handle, data) => {
-  handle(data)
+const throttleSetData = throttle((page, data) => {
+  page.setData(diff(data, page.data));
 }, 50)
 
 function getPage (vm) {
@@ -136,7 +192,7 @@ export function updateDataToMP () {
   }
 
   const data = formatVmData(this)
-  throttleSetData(page.setData.bind(page), data)
+  throttleSetData(page, data)
 }
 
 export function initDataToMP () {
